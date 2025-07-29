@@ -1,0 +1,34 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id          String    @id
+  shop        String
+  state       String
+  isOnline    Boolean   @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+}
+
+// Model for storing WhatsApp settings per shop
+model WhatsAppSettings {
+  id                     Int      @id @default(autoincrement())
+  shop                   String   @unique
+  phoneId                String?
+  accessToken            String?
+  confirmationTemplate   String?
+  fulfillmentTemplate    String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}

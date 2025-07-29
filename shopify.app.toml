@@ -1,0 +1,44 @@
+# This is the configuration file for your Shopify app.
+# After changing this file, run `npm run dev` to reload your changes.
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "2b80a60d39cc589a724f48ceff65aa89"
+name = "whatsapp-notify"
+handle = "whatsapp-notify-1"
+application_url = "https://usage-projection-worse-cia.trycloudflare.com"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[auth]
+redirect_urls = ["https://usage-projection-worse-cia.trycloudflare.com/auth/callback", "https://usage-projection-worse-cia.trycloudflare.com/auth/shopify/callback", "https://usage-projection-worse-cia.trycloudflare.com/api/auth/callback"]
+
+# The access scopes now include permissions for orders and fulfillments
+[access_scopes]
+scopes = "write_products,read_orders,write_orders,read_fulfillments,write_fulfillments"
+
+[webhooks]
+api_version = "2025-07"
+
+  # Your existing webhooks
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks"
+
+  # Added webhooks for WhatsApp notifications
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillments/create" ]
+  uri = "/webhooks"
+
+[pos]
+embedded = false
