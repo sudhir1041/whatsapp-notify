@@ -11,7 +11,15 @@ export const loader = async () => {
 
 const sendWhatsAppMessage = async (settings, to, templateName, components) => {
   const { phoneId, accessToken } = settings;
-  const cleanPhoneNumber = to.replace(/[^0-9]/g, "");
+  
+  // Better phone number cleaning - ensure it starts with country code
+  let cleanPhoneNumber = to.replace(/[^0-9]/g, "");
+  
+  // If number doesn't start with country code, assume it's Indian (+91)
+  if (!cleanPhoneNumber.startsWith('91') && cleanPhoneNumber.length === 10) {
+    cleanPhoneNumber = '91' + cleanPhoneNumber;
+  }
+  
   const url = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
 
   const data = {
@@ -26,26 +34,29 @@ const sendWhatsAppMessage = async (settings, to, templateName, components) => {
   };
 
   console.log(`[LOG] Preparing to send message to ${cleanPhoneNumber} using template '${templateName}'.`);
-  // For deep debugging, uncomment the next line to see the exact data sent to Meta
-  // console.log("[LOG] WhatsApp API Payload:", JSON.stringify(data, null, 2));
+  console.log("[LOG] WhatsApp API Payload:", JSON.stringify(data, null, 2));
 
   try {
-    await axios.post(url, data, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const response = await axios.post(url, data, {
+      headers: { 
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
     });
-    console.log(`✅ [SUCCESS] Message sent successfully to ${to}.`);
+    console.log(`✅ [SUCCESS] Message sent successfully to ${to}. Response:`, response.data);
   } catch (error) {
     console.error("❌ [ERROR] Failed to send WhatsApp message.");
+    console.error("[ERROR] Original phone:", to);
+    console.error("[ERROR] Cleaned phone:", cleanPhoneNumber);
+    console.error("[ERROR] Template:", templateName);
+    console.error("[ERROR] Components:", JSON.stringify(components, null, 2));
+    
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error("[ERROR] Response Data:", JSON.stringify(error.response.data, null, 2));
       console.error("[ERROR] Response Status:", error.response.status);
+      console.error("[ERROR] Response Data:", JSON.stringify(error.response.data, null, 2));
     } else if (error.request) {
-      // The request was made but no response was received
       console.error("[ERROR] No response received:", error.request);
     } else {
-      // Something happened in setting up the request that triggered an Error
       console.error("[ERROR] Axios setup error:", error.message);
     }
   }
@@ -84,21 +95,38 @@ export const action = async ({ request }) => {
         const order = payload;
         console.log(`[LOG] Processing ORDERS_CREATE for order #${order.name}`);
         const customerPhoneOrder = order.customer?.phone || order.phone;
-        const productTitles = order.line_items.map(item => item.title).join(', ');
+        
+        // Logic to create a compressed summary of product names
+        const getProductSummary = (lineItems) => {
+          const titles = lineItems.map(item => item.title);
+          const fullString = titles.join(', ');
+          
+          const charLimit = 60; // Safe character limit for a WhatsApp variable
+          if (fullString.length > charLimit) { 
+            const firstTitle = titles[0];
+            const otherItemsCount = titles.length - 1;
+            if (otherItemsCount > 0) {
+              const summary = `${firstTitle} & ${otherItemsCount} more`;
+              // Even the summary could be too long if the first title is long
+              if (summary.length > charLimit) {
+                return firstTitle.substring(0, charLimit - 10) + '... & more';
+              }
+              return summary;
+            }
+            // If only one item and its title is too long, truncate it.
+            return firstTitle.substring(0, charLimit - 3) + '...';
+          }
+          return fullString;
+        }
+        
+        const productSummary = getProductSummary(order.line_items);
         
         if (customerPhoneOrder && settings.confirmationTemplate) {
           await sendWhatsAppMessage(settings, customerPhoneOrder, settings.confirmationTemplate, [
             { type: "text", text: order.customer?.first_name || "Valued Customer" },
             { type: "text", text: order.name },
-            {
-              type: "currency",
-              currency: {
-                fallback_value: `${order.total_price} ${order.currency}`,
-                code: order.currency,
-                amount_1000: Math.round(parseFloat(order.total_price) * 1000),
-              },
-            },
-            { type: "text", text: productTitles },
+            { type: "text", text: `${order.total_price} ${order.currency}` },
+            { type: "text", text: productSummary },
           ]);
         } else {
           console.log("⚠️ [SKIP] Order created, but no customer phone or confirmation template found in settings.");
@@ -134,12 +162,12 @@ export const action = async ({ request }) => {
           const trackingLink = fulfillment.tracking_url;
           const trackingNumber = fulfillment.tracking_number;
 
-          if (customer?.phone && trackingLink && settings.fulfillmentTemplate) {
+          if (customer?.phone && settings.fulfillmentTemplate) {
             await sendWhatsAppMessage(settings, customer.phone, settings.fulfillmentTemplate, [
               { type: "text", text: customer.firstName || "Valued Customer" },
               { type: "text", text: orderDetails.name },
               { type: "text", text: trackingNumber || "N/A" },
-              { type: "text", text: trackingLink },
+              { type: "text", text: trackingLink || "Tracking info will be updated soon" },
             ]);
           } else {
             console.log("⚠️ [SKIP] Fulfillment created, but required info was missing.");
